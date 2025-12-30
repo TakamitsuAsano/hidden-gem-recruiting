@@ -1,27 +1,33 @@
 import streamlit as st
-import google.generativeai as genai
+from openai import OpenAI
 import os
 
 # --- ページ設定 ---
 st.set_page_config(
-    page_title="Hidden Gem Recruiter 💎",
+    page_title="Hidden Gem Recruiter (OpenAI Ver.)",
     page_icon="💎",
     layout="wide"
 )
 
 # --- サイドバー：設定 ---
 st.sidebar.title("💎 設定 / Settings")
-st.sidebar.markdown("Gemini API Keyを入力してください。")
+st.sidebar.markdown("OpenAI API Keyを入力してください。")
 
-# APIキーの入力（セキュアに入力）
-api_key = st.sidebar.text_input("Google Gemini API Key", type="password")
-model_name = "gemini-1.5-flash" # コスト効率重視
+# APIキーの入力
+api_key = st.sidebar.text_input("OpenAI API Key", type="password")
+
+# モデル選択（デフォルトは安価で高速な mini）
+model_name = st.sidebar.selectbox(
+    "使用モデル",
+    ("gpt-4o-mini", "gpt-4o"),
+    help="gpt-4o-mini: 安くて速い（推奨） / gpt-4o: より賢いが高い"
+)
 
 # --- メインエリア ---
 st.title("💎 Hidden Gem Recruiting: Canvas Prompt Generator")
-st.markdown("""
-地域の企業や宇宙ベンチャーの「埋もれた魅力」を発掘し、
-Gemini Canvasで**「刺さる求人サイト」**を一発生成するためのプロンプト作成ツールです。
+st.markdown(f"""
+地域の企業や宇宙ベンチャーの「埋もれた魅力」を発掘するためのツールです。
+**Engine:** OpenAI ({model_name})
 """)
 
 st.divider()
@@ -76,17 +82,15 @@ generate_btn = st.button("🚀 Canvas用プロンプトを生成する", type="p
 
 if generate_btn:
     if not api_key:
-        st.error("左側のサイドバーでAPI Keyを設定してください。")
+        st.error("左側のサイドバーでOpenAI API Keyを設定してください。")
     elif not raw_data.strip():
         st.warning("素材データが入力されていません。")
     else:
         try:
-            # Geminiの設定
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(model_name)
+            # OpenAIクライアントの初期化
+            client = OpenAI(api_key=api_key)
 
-            # --- メタ・プロンプトの構築（ここが肝） ---
-            # 選択されたモードに応じた「重視すべきポイント」の定義
+            # --- メタ・プロンプトの構築 ---
             focus_instruction = ""
             if "Specific Project" in mode:
                 focus_instruction = """
@@ -113,10 +117,11 @@ if generate_btn:
                 - **デザイン指示:** コーポレートサイト形式。信頼感、誠実さ、洗練された印象。
                 """
 
-            # LLMへの命令（メタ・プロンプト）
+            # システムプロンプト（指示書）
             system_prompt = f"""
             あなたはプロの「求人サイト構成作家」です。
-            以下の「雑多な入力データ」を分析し、Google Gemini Canvas（Webサイト生成AI）に入力するための
+            ユーザーから提供される「雑多な入力データ」を分析し、
+            Gemini CanvasやChatGPT Canvas（Webサイト生成AI）に入力するための
             『最高品質の指示プロンプト』を作成してください。
 
             ## 対象クライアント
@@ -127,7 +132,7 @@ if generate_btn:
             ## あなたのタスク
             1. 入力データから、上記の「採用モード」に最適な「Hidden Gems（埋もれた魅力）」を発掘・抽出してください。
             2. それ以外のノイズ（無関係な情報）は捨ててください。
-            3. Gemini Canvasに対して、「HTML/Tailwind CSSでサイトを出力せよ」という命令文を構成してください。
+            3. 生成AIに対して、「HTML/Tailwind CSSでサイトを出力せよ」という命令文を構成してください。
 
             ## 採用モードごとの指針
             {focus_instruction}
@@ -160,17 +165,27 @@ if generate_btn:
             ---
             """
 
-            with st.spinner('💎 魅力を抽出中... Geminiが思考しています...'):
-                response = model.generate_content([system_prompt, raw_data])
-                generated_prompt = response.text
+            with st.spinner(f'💎 魅力を抽出中... OpenAI ({model_name}) が思考しています...'):
+                
+                # OpenAI API呼び出し
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": raw_data}
+                    ],
+                    temperature=0.7
+                )
+                
+                generated_prompt = response.choices[0].message.content
 
             # --- 結果表示 ---
             st.success("✅ プロンプト生成完了！")
-            st.markdown("以下のテキストをコピーして、**Gemini Canvas** に貼り付けてください。")
+            st.markdown("以下のテキストをコピーして、**Gemini Canvas** または **ChatGPT Canvas** に貼り付けてください。")
             
             st.code(generated_prompt, language="markdown")
             
-            st.info("💡 Tip: Canvasで出力されたサイトを見ながら、「もっと写真を大きく」「セクションを入れ替えて」と会話で修正してください。")
+            st.info("💡 Tip: このプロンプトは、GeminiだけでなくChatGPTのCanvas機能でも有効です。")
 
         except Exception as e:
             st.error(f"エラーが発生しました: {e}")
